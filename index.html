@@ -62,6 +62,7 @@ button { cursor: pointer; }
   padding-left: max(16px, env(safe-area-inset-left, 0px));
   padding-right: max(16px, env(safe-area-inset-right, 0px));
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
 .ticket {
@@ -71,7 +72,7 @@ button { cursor: pointer; }
   border-radius: 22px;
   padding: 20px 22px 18px;
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 6px 16px;
   /* perforated stub edge */
   -webkit-mask: radial-gradient(circle 9px at calc(100% - 92px) 0, transparent 98%, #000) top/100% 51% no-repeat,
@@ -86,13 +87,13 @@ button { cursor: pointer; }
   border-left: 2px dashed color-mix(in srgb, var(--tag-ink) 35%, transparent);
 }
 .route {
-  display: flex; align-items: center; gap: 12px;
+  display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap;
   font-family: var(--font-display);
   font-size: clamp(30px, 8vw, 44px);
   line-height: 1.1;
 }
 .route svg { width: 42px; height: 20px; flex: none; }
-.ticket .sub { grid-column: 1; font-size: 15px; max-width: 34ch; }
+.ticket .sub { grid-column: 1; font-size: 15px; max-width: 34ch; margin: 0; min-width: 0; }
 .stub {
   grid-column: 2; grid-row: 1 / span 2;
   width: 64px; text-align: center; align-self: center;
@@ -142,11 +143,13 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
   color: var(--muted);
 }
 .chip:hover { border-color: var(--ink); color: var(--ink); }
+.chip.mine { border: 1.5px solid var(--tag); background: color-mix(in srgb, var(--tag) 22%, var(--surface)); color: var(--ink); }
+.chip.mine small { color: var(--muted); font-size: 12px; margin-left: 2px; }
 
 .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .checklist li {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   background: var(--surface);
@@ -240,7 +243,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 .pack-form label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .bag-list { list-style: none; margin: 0; padding: 0 2px 0 0; overflow-y: auto; display: grid; gap: 6px; align-content: start; min-height: 0; flex: 1; }
 .bag-list li {
-  display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
   border: 1.5px solid var(--line); border-radius: 14px; padding: 8px 12px;
 }
 .bag-list li.packed { background: color-mix(in srgb, var(--go) 12%, var(--surface)); border-color: color-mix(in srgb, var(--go) 45%, var(--line)); }
@@ -271,6 +274,10 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 .done-card .btn { background: var(--tag-ink); border-color: var(--tag-ink); color: var(--tag); }
 .done-card .btn.ghost { background: transparent; color: var(--tag-ink); }
 
+@media (max-width: 480px) {
+  .ticket { padding: 18px 16px 16px; gap: 6px 12px; }
+  .ticket .sub { font-size: 14px; }
+}
 @media (max-width: 760px) {
   #page-bag { grid-template-columns: minmax(0, 1fr); grid-template-rows: 52% 48%; }
   .panel { border-left: 0; border-top: 1.5px solid var(--line); padding-top: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); gap: 10px; }
@@ -305,7 +312,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
   <p class="status" id="list-status" aria-live="polite"></p>
 
   <div>
-    <p class="hint" style="margin-bottom:8px">자주 챙기는 짐</p>
+    <p class="hint" style="margin-bottom:8px" id="suggest-hint">자주 챙기는 짐</p>
     <div class="chips" id="suggest"></div>
   </div>
 
@@ -437,6 +444,20 @@ function load() {
   } catch (e) { /* storage unavailable */ }
   return SAMPLE.map((name, i) => ({ id: uid(), name, packed: false, packedAt: 0 }));
 }
+// how often the user has written each item, kept across visits
+const HIST_KEY = 'pack-dorm-home-history-v1';
+let history = loadHistory();
+function loadHistory() {
+  try {
+    const h = JSON.parse(localStorage.getItem(HIST_KEY) || '{}');
+    if (h && typeof h === 'object' && !Array.isArray(h)) return h;
+  } catch (e) { /* storage unavailable */ }
+  return {};
+}
+function bumpHistory(name) {
+  history[name] = (history[name] || 0) + 1;
+  try { localStorage.setItem(HIST_KEY, JSON.stringify(history)); } catch (e) { /* ignore */ }
+}
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); } catch (e) { /* ignore */ }
 }
@@ -488,11 +509,20 @@ function renderList() {
   const names = new Set(items.map((i) => i.name));
   const sg = $('suggest');
   sg.innerHTML = '';
-  SUGGEST.filter((s) => !names.has(s)).slice(0, 14).forEach((s) => {
+  const mine = Object.keys(history).sort((a, b) => history[b] - history[a]);
+  const pool = [...mine, ...SUGGEST.filter((s) => !(s in history))].filter((s) => !names.has(s));
+  $('suggest-hint').textContent = mine.length ? '자주 챙기는 짐 · 노란 칸은 내가 자주 적은 짐' : '자주 챙기는 짐';
+  pool.slice(0, 16).forEach((s) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'chip';
+    const count = history[s] || 0;
+    b.className = count ? 'chip mine' : 'chip';
     b.textContent = '+ ' + s;
+    if (count > 1) {
+      const c = document.createElement('small');
+      c.textContent = '×' + count;
+      b.appendChild(c);
+    }
     b.addEventListener('click', () => addItem(s));
     sg.appendChild(b);
   });
@@ -510,6 +540,7 @@ function addItem(name, packed = false) {
   }
   const it = { id: uid(), name, packed, packedAt: packed ? Date.now() : 0 };
   items.push(it);
+  bumpHistory(name);
   const kind = kindOf(name);
   $('list-status').textContent = kind === BOX_KIND
     ? `"${name}" 추가. 모양을 몰라서 이름표 붙은 상자로 넣을게요.`
