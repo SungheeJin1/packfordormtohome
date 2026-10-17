@@ -239,16 +239,30 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 .progress-top b { font-family: var(--font-display); color: var(--ink); font-variant-numeric: tabular-nums; }
 .bar { height: 14px; border-radius: 99px; background: var(--line); overflow: hidden; }
 .bar > i { display: block; height: 100%; width: 0; background: var(--go); transition: width .35s ease; }
-.pack-form { display: flex; gap: 8px; }
+.pack-form { display: flex; gap: 6px; }
+.pack-form .btn { padding: 10px 14px; }
 .pack-form label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 .bag-list { list-style: none; margin: 0; padding: 0 2px 0 0; overflow-y: auto; display: grid; gap: 6px; align-content: start; min-height: 0; flex: 1; }
 .bag-list li {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto auto; gap: 6px; align-items: center;
   border: 1.5px solid var(--line); border-radius: 14px; padding: 8px 12px;
 }
 .bag-list li.packed { background: color-mix(in srgb, var(--go) 12%, var(--surface)); border-color: color-mix(in srgb, var(--go) 45%, var(--line)); }
 .bag-list .name { font-size: 16px; }
-.bag-list input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--go); margin: 0; }
+.bag-list input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--go); margin: 0 4px 0 0; }
+.bag-list .name { cursor: pointer; }
+.icon-btn {
+  border: 0; background: transparent; color: var(--muted);
+  width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; padding: 0;
+}
+.icon-btn:hover { background: var(--bg); color: var(--ink); }
+.icon-btn.del:hover { color: var(--warn); }
+.icon-btn svg { width: 18px; height: 18px; }
+.rename {
+  min-width: 0; width: 100%; font-size: 16px; padding: 4px 8px;
+  border: 2px solid var(--ink); border-radius: 10px; background: var(--surface);
+}
+.list-hint { margin: -4px 0 0; font-size: 13px; color: var(--muted); }
 
 .toast {
   position: absolute; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px));
@@ -279,6 +293,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
   .ticket .sub { font-size: 14px; }
 }
 @media (max-width: 760px) {
+  .bag-list .kind { display: none; }
   #page-bag { grid-template-columns: minmax(0, 1fr); grid-template-rows: 52% 48%; }
   .panel { border-left: 0; border-top: 1.5px solid var(--line); padding-top: 14px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); gap: 10px; }
 }
@@ -306,7 +321,7 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
   </div>
 
   <form class="add-form" id="add-form" autocomplete="off">
-    <input id="item-input" type="text" maxlength="30" placeholder="짐 이름 (예: 옷, 노트북, 칫솔)" aria-label="짐 이름">
+    <input id="item-input" type="text" maxlength="30" placeholder="짐 이름 (예: 옷, 노트북, 칫솔)" aria-label="짐 이름" enterkeyhint="done">
     <button class="btn" type="submit">추가</button>
   </form>
   <p class="status" id="list-status" aria-live="polite"></p>
@@ -354,10 +369,12 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
     </div>
     <form class="pack-form" id="pack-form" autocomplete="off">
       <label for="pack-input">챙긴 짐 이름</label>
-      <input id="pack-input" type="text" maxlength="30" list="unpacked-names" placeholder="챙긴 짐 이름 입력">
+      <input id="pack-input" type="text" maxlength="30" list="unpacked-names" placeholder="챙긴 짐 이름 입력" enterkeyhint="done">
       <datalist id="unpacked-names"></datalist>
       <button class="btn" type="submit">넣기</button>
+      <button class="btn ghost" type="button" id="list-only" aria-label="가방에 넣지 않고 리스트에만 추가">+리스트</button>
     </form>
+    <p class="list-hint">체크하면 가방에 넣고, 체크를 풀면 가방에서 빼요. 3D 가방 속 물건을 눌러도 빠져요.</p>
     <ul class="bag-list" id="bag-list"></ul>
   </aside>
 </section>
@@ -562,7 +579,7 @@ $('add-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('item-input');
   if (addItem(input.value)) input.value = '';
-  input.focus();
+  settleKeyboard(input);
 });
 let clearArmed = false;
 $('clear-all').addEventListener('click', (e) => {
@@ -608,7 +625,15 @@ function renderBagPanel() {
     const kd = document.createElement('span');
     kd.className = 'kind' + (kindOf(it.name) === BOX_KIND ? ' unknown' : '');
     kd.textContent = kindOf(it.name).label;
-    li.append(cb, nm, kd);
+    const edit = iconButton('icon-btn', it.name + ' 이름 고치기', PENCIL);
+    edit.addEventListener('click', () => startRename(li, nm, it));
+    const del = iconButton('icon-btn del', it.name + ' 리스트에서 지우기', CROSS);
+    del.addEventListener('click', () => {
+      items = items.filter((x) => x.id !== it.id);
+      save(); renderAll(); syncScene();
+      toast(`${it.name}을(를) 리스트에서 지웠어요.`);
+    });
+    li.append(cb, nm, kd, edit, del);
     ul.appendChild(li);
   }
   const packed = items.filter((i) => i.packed);
@@ -625,11 +650,83 @@ function renderBagPanel() {
   });
 }
 
+const PENCIL = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M13.5 3.5l3 3L7 16H4v-3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>';
+const CROSS = '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 5l10 10M15 5L5 15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>';
+function iconButton(cls, label, svg) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls;
+  b.setAttribute('aria-label', label);
+  b.title = label;
+  b.innerHTML = svg;
+  return b;
+}
+
+function startRename(li, nm, it) {
+  const input = document.createElement('input');
+  input.className = 'rename';
+  input.id = 'rename-' + it.id;
+  input.value = it.name;
+  input.maxLength = 30;
+  input.setAttribute('enterkeyhint', 'done');
+  input.setAttribute('aria-label', it.name + ' 새 이름');
+  nm.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (commit) => {
+    if (done) return;
+    done = true;
+    const name = input.value.trim();
+    if (commit && name && name !== it.name) {
+      if (items.some((x) => x.id !== it.id && x.name === name)) {
+        toast(`"${name}"은(는) 이미 리스트에 있어요.`);
+      } else {
+        renameItem(it, name);
+        return;
+      }
+    }
+    renderBagPanel();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); input.blur(); }
+    else if (e.key === 'Escape') finish(false);
+  });
+  input.addEventListener('blur', () => finish(true));
+}
+
+function renameItem(it, name) {
+  const old = it.name;
+  it.name = name;
+  bumpHistory(name);
+  // the 3D model depends on the name, so drop a fresh one into the bag
+  const st = live.get(it.id);
+  if (st) {
+    itemsGroup.remove(st.outer);
+    live.delete(it.id);
+  }
+  save(); renderAll(); syncScene();
+  toast(`"${old}" → "${name}"(으)로 고쳤어요.`);
+}
+
 function renderAll() {
   renderList();
   renderBagPanel();
 }
 
+const TOUCH = window.matchMedia('(pointer: coarse)').matches;
+function settleKeyboard(input) {
+  if (TOUCH) input.blur(); else input.focus();
+}
+$('list-only').addEventListener('click', () => {
+  const input = $('pack-input');
+  const q = input.value.trim();
+  if (!q) { toast('리스트에 넣을 짐 이름을 먼저 적어 주세요.'); return; }
+  if (addItem(q, false)) toast(`"${q}"을(를) 리스트에 추가했어요.`);
+  else toast(`"${q}"은(는) 이미 리스트에 있어요.`);
+  input.value = '';
+  settleKeyboard(input);
+});
 $('pack-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const input = $('pack-input');
@@ -650,7 +747,7 @@ $('pack-form').addEventListener('submit', (e) => {
     if (it) { syncScene(); toast(`리스트에 없던 "${q}"을(를) 추가하고 가방에 넣었어요.`); }
   }
   input.value = '';
-  input.focus();
+  settleKeyboard(input);
 });
 $('back').addEventListener('click', showList);
 $('done-back').addEventListener('click', showList);
@@ -679,7 +776,7 @@ async function showBag() {
   running = true;
   lastT = performance.now();
   requestAnimationFrame(loop);
-  setTimeout(() => $('pack-input').focus({ preventScroll: true }), 50);
+  if (!TOUCH) setTimeout(() => $('pack-input').focus({ preventScroll: true }), 50);
 }
 function showList() {
   $('page-bag').hidden = true;
@@ -1471,6 +1568,25 @@ function initScene() {
   raycaster = new THREE.Raycaster();
   pointer = new THREE.Vector2();
   renderer.domElement.addEventListener('pointermove', onHover);
+  let down = null;
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    down = { x: e.clientX, y: e.clientY, t: performance.now() };
+  });
+  renderer.domElement.addEventListener('pointerup', (e) => {
+    if (!down) return;
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    const quick = performance.now() - down.t < 400;
+    down = null;
+    if (moved > 8 || !quick) return; // that was a drag to rotate
+    const id = pickItem(e);
+    const it = id && items.find((x) => x.id === id);
+    if (it && it.packed) {
+      $('tip').hidden = true;
+      setPacked(it.id, false);
+      toast(`${it.name}을(를) 가방에서 뺐어요.`);
+    }
+  });
   renderer.domElement.addEventListener('pointerleave', () => { $('tip').hidden = true; });
   window.addEventListener('resize', onResize);
 }
@@ -1493,17 +1609,29 @@ function onResize() {
   camera.updateProjectionMatrix();
 }
 
-function onHover(e) {
+function pickItem(e) {
   const rect = renderer.domElement.getBoundingClientRect();
   pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
   pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
-  const hit = raycaster.intersectObjects(itemsGroup.children, true)[0];
+  const hits = raycaster.intersectObjects(itemsGroup.children, true);
+  for (const h of hits) {
+    const st = live.get(h.object.userData.itemId);
+    if (st && st.phase !== 'leaving') return h.object.userData.itemId;
+  }
+  return null;
+}
+
+function onHover(e) {
+  if (e.pointerType === 'touch') return;
+  const rect = renderer.domElement.getBoundingClientRect();
+  const id = pickItem(e);
+  renderer.domElement.style.cursor = id ? 'pointer' : '';
   const tip = $('tip');
-  if (hit && hit.object.userData.itemId) {
-    const it = items.find((x) => x.id === hit.object.userData.itemId);
+  if (id) {
+    const it = items.find((x) => x.id === id);
     if (it) {
-      tip.textContent = it.name;
+      tip.textContent = it.name + ' · 눌러서 빼기';
       tip.style.left = (e.clientX - rect.left) + 'px';
       tip.style.top = (e.clientY - rect.top) + 'px';
       tip.hidden = false;
