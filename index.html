@@ -409,6 +409,9 @@ const KINDS = [
   { k: 'console',    label: '게임기',   w: 0.4,  keys: ['게임기', '닌텐도', '스위치', '플스', 'console', 'switch'] },
   { k: 'watch',      label: '시계',     w: 0.08, keys: ['시계', '워치', 'watch'] },
   { k: 'dryer',      label: '드라이기', w: 0.6,  keys: ['드라이기', '드라이어', '고데기', 'dryer'] },
+  { k: 'denture',    label: '틀니',     w: 0.05, keys: ['틀니', '교정기', '유지장치', '리테이너', 'denture', 'retainer'] },
+  { k: 'hairtie',    label: '머리끈',   w: 0.01, keys: ['머리끈', '헤어끈', '곱창', '고무줄', 'scrunchie'] },
+  { k: 'hairpin',    label: '삔',       w: 0.01, keys: ['머리핀', '실핀', '헤어핀', '집게핀', '삔', '핀', 'hairpin'] },
   { k: 'socks',      label: '양말',     w: 0.1,  keys: ['양말', 'socks'] },
   { k: 'underwear',  label: '속옷',     w: 0.1,  keys: ['속옷', '팬티', '브라', 'underwear'] },
   { k: 'pants',      label: '바지',     w: 0.6,  keys: ['청바지', '바지', '반바지', '슬랙스', '레깅스', 'jeans', 'pants'] },
@@ -451,7 +454,7 @@ function kindOf(name) {
 }
 
 const SUGGEST = ['옷', '바지', '양말', '속옷', '수건', '신발', '노트북', '충전기', '휴대폰', '책', '칫솔', '치약', '샴푸', '텀블러', '우산', '모자', '안경', '이어폰', '지갑', '열쇠', '약', '과자', '베개', '이불', '인형', '반찬통', '마스크', '드라이기'];
-const SAMPLE = ['옷', '청바지', '양말', '노트북', '충전기', '칫솔', '수건', '전공책'];
+const SAMPLE = ['옷', '양말', '충전기', '휴대폰', '이어폰', '안경', '속옷', '삔', '머리끈', '물', '지갑', '화장품', '틀니'];
 
 /* ---------- state ---------- */
 const STORE_KEY = 'pack-dorm-home-v1';
@@ -1313,6 +1316,57 @@ const BUILD = {
     const h = mesh(new THREE.TorusGeometry(0.16, 0.025, 8, 20, Math.PI), mat(c, 1), 0, 0.09, -0.48);
     h.rotation.x = -Math.PI / 2;
     g.add(h);
+    return g;
+  },
+  denture() {
+    const g = new THREE.Group();
+    const gum = mat('#F29BA6', 0.45);
+    const arch = mesh(new THREE.TorusGeometry(0.3, 0.07, 14, 36, Math.PI), gum, 0, 0.07, 0.08);
+    arch.rotation.x = -Math.PI / 2;
+    arch.scale.set(1, 1.25, 0.9);
+    g.add(arch);
+    const tooth = mat('#FBF8F0', 0.25);
+    for (let i = 0; i < 12; i++) {
+      const a = Math.PI * (i + 0.5) / 12;
+      const t = mesh(rbox(0.07, 0.09, 0.06), tooth, Math.cos(a) * 0.3, 0.15, 0.08 - Math.sin(a) * 0.375);
+      t.rotation.y = Math.PI / 2 - a;
+      g.add(t);
+    }
+    return g;
+  },
+  hairtie(r) {
+    const g = new THREE.Group();
+    const cols = ['#2E2E3A', '#F2A7B8', '#8E7DBE', '#E4572E', '#5FA8A0'];
+    for (let i = 0; i < 3; i++) {
+      const t = mesh(new THREE.TorusGeometry(0.15, i === 0 ? 0.06 : 0.035, 12, 28), mat(i === 0 ? pick(r, cols) : cols[(i * 2) % cols.length], 0.85), -0.2 + i * 0.22, 0.05, (i % 2) * 0.12);
+      t.rotation.x = Math.PI / 2;
+      g.add(t);
+    }
+    return g;
+  },
+  hairpin(r) {
+    const g = new THREE.Group();
+    const metal = mat('#2E2E3A', 0.35, 0.6);
+    for (let i = 0; i < 3; i++) {
+      const pin = new THREE.Group();
+      pin.add(mesh(rbox(0.02, 0.02, 0.55), metal, -0.025, 0.01, 0));
+      const wavy = mesh(rbox(0.02, 0.02, 0.55), metal, 0.025, 0.01, 0);
+      wavy.rotation.y = 0.05;
+      pin.add(wavy);
+      pin.add(mesh(new THREE.TorusGeometry(0.025, 0.01, 8, 12, Math.PI), metal, 0, 0.01, -0.275));
+      pin.position.x = -0.25 + i * 0.12;
+      pin.rotation.y = (r() - 0.5) * 0.3;
+      g.add(pin);
+    }
+    // a bow-topped clip
+    const c = pick(r, ['#F2A7B8', '#E4572E', '#F3A712', '#8E7DBE']);
+    g.add(mesh(rbox(0.06, 0.03, 0.5), mat('#C9CED6', 0.3, 0.8), 0.25, 0.015, 0));
+    for (const sx of [-1, 1]) {
+      const lobe = mesh(new THREE.SphereGeometry(0.09, 16, 12), mat(c, 0.6), 0.25 + sx * 0.09, 0.06, -0.18);
+      lobe.scale.set(1.1, 0.5, 0.8);
+      g.add(lobe);
+    }
+    g.add(mesh(new THREE.SphereGeometry(0.045, 12, 10), mat(c, 0.6), 0.25, 0.07, -0.18));
     return g;
   },
   box(r, name) {
