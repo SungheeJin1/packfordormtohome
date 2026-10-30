@@ -1,6 +1,6 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when any listed file changes so phones pick up the new version.
-const CACHE = 'pack-dorm-home-v6';
+const CACHE = 'pack-dorm-home-v7';
 const FILES = [
   "./",
   "index.html",
@@ -118,10 +118,11 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  if (req.mode === 'navigate') {
-    // page itself: try the network for updates, fall back to the cached copy offline
+  const path = new URL(req.url).pathname;
+  if (req.mode === 'navigate' || path.endsWith('/') || path.endsWith('/index.html')) {
+    // page itself: always ask the network (skipping the browser's HTTP cache), fall back to the cached copy offline
     e.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-store' })
         .then((res) => {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put('index.html', copy));

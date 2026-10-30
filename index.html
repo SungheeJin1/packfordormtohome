@@ -212,6 +212,16 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 }
 .go:active { box-shadow: 0 1px 0 var(--go-shadow); }
 .go:disabled { opacity: .45; cursor: not-allowed; }
+.version { text-align: center; font-size: 12px; color: var(--muted); margin: -6px 0 0; }
+.update-bar {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+  display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap;
+  background: var(--ink); color: var(--bg);
+  padding-block: 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.update-bar .btn { background: var(--tag); border-color: var(--tag); color: var(--tag-ink); box-shadow: none; font-size: 16px; padding: 6px 16px; }
 
 /* ---------- Page 2: bag ---------- */
 #page-bag {
@@ -358,7 +368,13 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
   </div>
 
   <button class="btn go" id="go-bag" type="button">리스트 작성 완료 · 가방 싸러 가기</button>
+  <p class="version" id="app-version"></p>
 </section>
+
+<div class="update-bar" id="update-bar" role="status" hidden>
+  <span>새 버전이 있어요.</span>
+  <button class="btn" type="button" id="update-now">지금 업데이트</button>
+</div>
 
 <section id="page-bag" hidden aria-label="가방 싸기">
   <div id="stage">
@@ -1995,9 +2011,26 @@ function loop(now) {
 
 renderAll();
 
-if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+// keep in step with CACHE in sw.js
+const APP_VERSION = '7';
+$('app-version').textContent = '버전 ' + APP_VERSION;
+$('update-now').addEventListener('click', () => location.reload());
+
+const ONLINE_HOST = /^https?:$/.test(location.protocol);
+if ('serviceWorker' in navigator && ONLINE_HOST) {
   navigator.serviceWorker.register('sw.js').catch(() => { /* offline mode unavailable */ });
 }
+// a home-screen app is often resumed rather than reloaded, so look for a newer page each time it comes back
+async function checkForUpdate() {
+  if (!ONLINE_HOST || !navigator.onLine) return;
+  try {
+    const res = await fetch('index.html', { cache: 'no-store' });
+    const m = (await res.text()).match(/const APP_VERSION = '([^']+)'/);
+    if (m && m[1] !== APP_VERSION) $('update-bar').hidden = false;
+  } catch (e) { /* offline */ }
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkForUpdate(); });
+checkForUpdate();
 })();
 </script>
 </body>
