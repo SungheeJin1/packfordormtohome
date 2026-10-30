@@ -1,6 +1,6 @@
 // Offline support: everything the game needs is cached on first visit.
 // Bump CACHE when any listed file changes so phones pick up the new version.
-const CACHE = 'pack-dorm-home-v4';
+const CACHE = 'pack-dorm-home-v5';
 const FILES = [
   "./",
   "index.html",
