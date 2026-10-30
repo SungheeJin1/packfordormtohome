@@ -154,9 +154,9 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 .checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .checklist li {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: var(--surface);
   border: 1.5px solid var(--line);
   border-radius: 18px;
@@ -415,10 +415,10 @@ const KINDS = [
   { k: 'laptop',     label: '노트북',   w: 1.6,  keys: ['노트북', '맥북', '그램', 'laptop', 'macbook'] },
   { k: 'tablet',     label: '태블릿',   w: 0.5,  keys: ['태블릿', '아이패드', '갤럭시탭', 'ipad', 'tablet'] },
   { k: 'keyboard',   label: '키보드',   w: 0.7,  keys: ['키보드', 'keyboard'] },
+  { k: 'charger',    label: '충전기',   w: 0.25, keys: ['충전기', '케이블', '어댑터', '멀티탭', '보조배터리', 'charger', 'cable'] },
   { k: 'headphones', label: '헤드폰',   w: 0.3,  keys: ['헤드폰', '헤드셋', 'headphone', 'headset'] },
   { k: 'earbuds',    label: '이어폰',   w: 0.06, keys: ['이어폰', '에어팟', '버즈', 'earphone', 'airpods', 'earbuds'] },
   { k: 'phone',      label: '휴대폰',   w: 0.2,  keys: ['휴대폰', '핸드폰', '스마트폰', '폰', 'phone'] },
-  { k: 'charger',    label: '충전기',   w: 0.25, keys: ['충전기', '케이블', '어댑터', '멀티탭', '보조배터리', 'charger', 'cable'] },
   { k: 'mouse',      label: '마우스',   w: 0.1,  keys: ['마우스', 'mouse'] },
   { k: 'camera',     label: '카메라',   w: 0.6,  keys: ['카메라', 'camera'] },
   { k: 'console',    label: '게임기',   w: 0.4,  keys: ['게임기', '닌텐도', '스위치', '플스', 'console', 'switch'] },
@@ -555,8 +555,10 @@ function renderList() {
       save(); renderAll();
       $('checklist').querySelector(`li[data-id="${it.id}"] .grip`).focus();
     });
+    const edit = iconButton('icon-btn', it.name + ' 이름 고치기', PENCIL);
+    edit.addEventListener('click', () => startRename(li, nm, it, renderList));
     li.dataset.id = it.id;
-    li.append(grip, cb, nm, kd, del);
+    li.append(grip, cb, nm, kd, edit, del);
     ul.appendChild(li);
   }
   const names = new Set(items.map((i) => i.name));
@@ -662,7 +664,7 @@ function renderBagPanel() {
     kd.className = 'kind' + (kindOf(it.name) === BOX_KIND ? ' unknown' : '');
     kd.textContent = kindOf(it.name).label;
     const edit = iconButton('icon-btn', it.name + ' 이름 고치기', PENCIL);
-    edit.addEventListener('click', () => startRename(li, nm, it));
+    edit.addEventListener('click', () => startRename(li, nm, it, renderBagPanel));
     const del = iconButton('icon-btn del', it.name + ' 리스트에서 지우기', CROSS);
     del.addEventListener('click', () => {
       items = items.filter((x) => x.id !== it.id);
@@ -766,7 +768,7 @@ function startDrag(e, li) {
   scrollTimer = requestAnimationFrame(autoScroll);
 }
 
-function startRename(li, nm, it) {
+function startRename(li, nm, it, rerender = renderBagPanel) {
   const input = document.createElement('input');
   input.className = 'rename';
   input.id = 'rename-' + it.id;
@@ -784,13 +786,13 @@ function startRename(li, nm, it) {
     const name = input.value.trim();
     if (commit && name && name !== it.name) {
       if (items.some((x) => x.id !== it.id && x.name === name)) {
-        toast(`"${name}"은(는) 이미 리스트에 있어요.`);
+        notify(`"${name}"은(는) 이미 리스트에 있어요.`);
       } else {
         renameItem(it, name);
         return;
       }
     }
-    renderBagPanel();
+    rerender();
   };
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); finish(true); input.blur(); }
@@ -810,7 +812,7 @@ function renameItem(it, name) {
     live.delete(it.id);
   }
   save(); renderAll(); syncScene();
-  toast(`"${old}" → "${name}"(으)로 고쳤어요.`);
+  notify(`"${old}" → "${name}"(으)로 고쳤어요.`);
 }
 
 function renderAll() {
@@ -857,6 +859,11 @@ $('back').addEventListener('click', showList);
 $('done-back').addEventListener('click', showList);
 $('reopen').addEventListener('click', () => { $('done').hidden = true; });
 
+// message on whichever page is showing
+function notify(msg) {
+  toast(msg);
+  $('list-status').textContent = msg;
+}
 let toastTimer = 0;
 function toast(msg) {
   const t = $('toast');
