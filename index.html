@@ -70,6 +70,16 @@ button { cursor: pointer; }
   grid-template-columns: minmax(0, 1fr);
   gap: 22px;
 }
+.trip-tabs {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px; padding: 4px;
+}
+.trip-tab {
+  border: 0; background: transparent; color: var(--muted);
+  border-radius: 14px; padding: 10px 8px;
+  font-family: var(--font-display); font-size: 17px;
+}
+.trip-tab[aria-selected="true"] { background: var(--tag); color: var(--tag-ink); box-shadow: 0 3px 0 color-mix(in srgb, var(--tag-ink) 25%, transparent); }
 .ticket {
   position: relative;
   background: var(--tag);
@@ -335,11 +345,15 @@ h2 { font-family: var(--font-display); font-weight: 400; font-size: 24px; margin
 <body>
 
 <section id="page-list" aria-labelledby="list-title">
+  <div class="trip-tabs" role="tablist" aria-label="행선지">
+    <button class="trip-tab" type="button" role="tab" id="tab-toHome" data-trip="toHome" aria-selected="true">기숙사 → 집</button>
+    <button class="trip-tab" type="button" role="tab" id="tab-toDorm" data-trip="toDorm" aria-selected="false">집 → 기숙사</button>
+  </div>
   <header class="ticket">
-    <div class="route" aria-label="기숙사에서 집으로">
-      <span>기숙사</span>
+    <div class="route" id="route" aria-label="기숙사에서 집으로">
+      <span id="route-from">기숙사</span>
       <svg viewBox="0 0 42 20" aria-hidden="true"><path d="M0 10h36M28 2l9 8-9 8" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>집</span>
+      <span id="route-to">집</span>
     </div>
     <p class="sub">가져갈 짐을 체크리스트로 적어요. 다 적으면 3D 가방에 하나씩 넣으러 가요.</p>
     <div class="stub"><b id="stub-count">0</b>짐 개수</div>
@@ -488,11 +502,17 @@ const SUGGEST = ['옷', '바지', '속옷', '수건', '신발', '노트북', '�
 const SAMPLE = ['충전기', '휴대폰', '이어폰', '안경', '속옷', '삔', '머리끈', '물', '지갑', '화장품', '틀니'];
 
 /* ---------- state ---------- */
-const STORE_KEY = 'pack-dorm-home-v1';
+// each direction keeps its own list; the history of typed items is shared
+const TRIPS = {
+  toHome: { from: '기숙사', to: '집', label: '기숙사에서 집으로', key: 'pack-dorm-home-v1', go: '집으로 출발!' },
+  toDorm: { from: '집', to: '기숙사', label: '집에서 기숙사로', key: 'pack-home-dorm-v1', go: '기숙사로 출발!' },
+};
+let trip = 'toHome';
+try { if (localStorage.getItem('pack-trip') === 'toDorm') trip = 'toDorm'; } catch (e) { /* storage unavailable */ }
 let items = load();
 function load() {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(TRIPS[trip].key);
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed;
@@ -515,7 +535,7 @@ function bumpHistory(name) {
   try { localStorage.setItem(HIST_KEY, JSON.stringify(history)); } catch (e) { /* ignore */ }
 }
 function save() {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(items)); } catch (e) { /* ignore */ }
+  try { localStorage.setItem(TRIPS[trip].key, JSON.stringify(items)); } catch (e) { /* ignore */ }
 }
 function uid() { return Math.random().toString(36).slice(2, 10); }
 const $ = (id) => document.getElementById(id);
@@ -831,6 +851,36 @@ function renameItem(it, name) {
   notify(`"${old}" → "${name}"(으)로 고쳤어요.`);
 }
 
+function applyTrip() {
+  const t = TRIPS[trip];
+  $('route-from').textContent = t.from;
+  $('route-to').textContent = t.to;
+  $('route').setAttribute('aria-label', t.label);
+  document.querySelectorAll('.trip-tab').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.trip === trip)));
+  if (tagMat) {
+    tagMat.map.dispose();
+    tagMat.map = labelTexture(`${t.from} → ${t.to}`, '#FFC93C', '#3A2A00', 512, 256);
+    tagMat.map.encoding = THREE.sRGBEncoding;
+    tagMat.needsUpdate = true;
+  }
+}
+
+function setTrip(next) {
+  if (next === trip) return;
+  trip = next;
+  try { localStorage.setItem('pack-trip', trip); } catch (e) { /* ignore */ }
+  items = load();
+  // the other trip's bag starts empty; its packed items drop in when the bag page opens
+  if (itemsGroup) for (const st of live.values()) itemsGroup.remove(st.outer);
+  live.clear();
+  celebrated = false;
+  $('done').hidden = true;
+  $('list-status').textContent = '';
+  applyTrip();
+  renderAll();
+}
+document.querySelectorAll('.trip-tab').forEach((b) => b.addEventListener('click', () => setTrip(b.dataset.trip)));
+
 function renderAll() {
   renderList();
   renderBagPanel();
@@ -928,7 +978,7 @@ const LID_OPEN = -1.95, CORNER = 0.32;
 let scene3d = null, renderer, camera, controls, itemsGroup, wallMat, raycaster, pointer;
 let running = false, lastT = 0;
 const live = new Map(); // id -> anim state
-let celebrated = false, completeTimer = 0;
+let celebrated = false, completeTimer = 0, tagMat = null;
 let confetti = [];
 
 function cssVar(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
@@ -1633,12 +1683,13 @@ function buildSuitcase() {
   for (const sx of [-0.28, 0.28]) g.add(mesh(rbox(0.12, 0.14, 0.08), rubber, sx, RIM_Y - 0.36, OUT_D / 2 + 0.04));
   // luggage tag
   const tag = new THREE.Group();
-  const tagTex = labelTexture('기숙사 → 집', '#FFC93C', '#3A2A00', 512, 256);
+  const tagTex = labelTexture(`${TRIPS[trip].from} → ${TRIPS[trip].to}`, '#FFC93C', '#3A2A00', 512, 256);
   const card = new THREE.Mesh(rbox(0.5, 0.25, 0.02), mat('#FFC93C', 0.6));
   card.castShadow = true;
   card.position.y = -0.25;
   tag.add(card);
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.22), new THREE.MeshStandardMaterial({ map: tagTex, roughness: 0.7 }));
+  tagMat = new THREE.MeshStandardMaterial({ map: tagTex, roughness: 0.7 });
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(0.46, 0.22), tagMat);
   face.position.set(0, -0.25, 0.011);
   tag.add(face);
   tag.add(mesh(rbox(0.025, 0.16, 0.015), rubber, 0, -0.06, 0));
@@ -1963,7 +2014,7 @@ function checkComplete(dt, settled) {
     completeTimer += dt;
     if (completeTimer > 0.5) {
       celebrated = true;
-      $('done-text').textContent = `짐 ${items.length}개를 다 챙겼어요. 집으로 출발!`;
+      $('done-text').textContent = `짐 ${items.length}개를 다 챙겼어요. ${TRIPS[trip].go}`;
       $('done').hidden = false;
       if (!REDUCE) burstConfetti();
     }
@@ -2009,10 +2060,11 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
+applyTrip();
 renderAll();
 
 // keep in step with CACHE in sw.js
-const APP_VERSION = '7';
+const APP_VERSION = '8';
 $('app-version').textContent = '버전 ' + APP_VERSION;
 $('update-now').addEventListener('click', () => location.reload());
 
